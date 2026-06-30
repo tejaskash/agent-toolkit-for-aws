@@ -1,0 +1,81 @@
+"""
+Knowledge Base shim Lambda — AgentCore Gateway target.
+
+WHY: the native Gateway KB connector only takes a MANAGED Bedrock KB and a fixed
+retrieval contract. For VECTOR / KENDRA / SQL KBs, or to preserve a managed KB's
+non-default retrieval config (reranker, metadata filter, hybrid override, top-k),
+expose retrieval as this Lambda: it presents one MCP tool, calls
+`bedrock-agent-runtime:Retrieve` against the source KB, and returns MCP-shaped
+passages.
+
+Gateway invokes a Lambda target with the tool arguments flat in `event` and the
+tool name in context.client_context.custom['bedrockAgentCoreToolName']
+("<target>___<tool>"). The handler also tolerates a direct {"query": ...} for local
+testing.
+"""
+# <<< RENDER: delete this whole block after substituting the tokens below.
+#   {{KB_ID}}        - the source knowledge base id
+#   {{TOP_K}}        - numberOfResults from the source KB association (default 5)
+#   {{SEARCH_TYPE}}  - "HYBRID" | "SEMANTIC" | "" (empty => KB default)
+# <<< /RENDER
+import os
+
+import boto3
+
+_KB_ID = os.environ.get("KB_ID", "{{KB_ID}}")
+_TOP_K = int(os.environ.get("KB_TOP_K", "{{TOP_K}}"))
+_SEARCH_TYPE = os.environ.get("KB_SEARCH_TYPE", "{{SEARCH_TYPE}}").strip().upper()
+
+_runtime = boto3.client("bedrock-agent-runtime")
+
+
+def _resolve_tool_and_args(event, context):
+    cc = getattr(context, "client_context", None)
+    custom = getattr(cc, "custom", None) if cc else None
+    raw = (custom or {}).get("bedrockAgentCoreToolName", "") if custom else ""
+    tool = raw.split("___", 1)[1] if "___" in raw else (raw or "search_knowledge_base")
+    args = event if isinstance(event, dict) else {}
+    return tool, args
+
+
+def _vector_search_config():
+    cfg = {"numberOfResults": _TOP_K}
+    if _SEARCH_TYPE in ("HYBRID", "SEMANTIC"):
+        cfg["overrideSearchType"] = _SEARCH_TYPE
+    # <<< OPTIONAL: metadata_filter
+    # Render the source KB association's `filter` here when present.
+    # cfg["filter"] = {{METADATA_FILTER_JSON}}
+    # <<< /OPTIONAL: metadata_filter
+    # <<< OPTIONAL: reranking
+    # Render the source KB association's `rerankingConfiguration` here when present.
+    # (Set on retrievalConfiguration, not vectorSearchConfiguration — see the
+    #  bedrock-agent-runtime Retrieve API shape.)
+    # <<< /OPTIONAL: reranking
+    return cfg
+
+
+def lambda_handler(event, context):
+    _, args = _resolve_tool_and_args(event, context)
+    query = args.get("query") or args.get("text") or ""
+    if not query:
+        return {"error": "Missing required argument 'query'."}
+
+    vector_cfg = _vector_search_config()
+    max_results = args.get("max_results")
+    if isinstance(max_results, int) and max_results > 0:
+        vector_cfg["numberOfResults"] = max_results
+
+    resp = _runtime.retrieve(
+        knowledgeBaseId=_KB_ID,
+        retrievalQuery={"text": query},
+        retrievalConfiguration={"vectorSearchConfiguration": vector_cfg},
+    )
+    results = [
+        {
+            "text": r.get("content", {}).get("text", ""),
+            "source": r.get("location", {}),
+            "score": r.get("score"),
+        }
+        for r in resp.get("retrievalResults", [])
+    ]
+    return {"results": results, "count": len(results)}

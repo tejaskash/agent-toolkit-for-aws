@@ -1,0 +1,89 @@
+"""
+Action-Group shim Lambda — AgentCore Gateway target (proxy-by-ARN).
+
+WHY: a Bedrock action-group Lambda is invoked with the Bedrock envelope and returns
+a wrapped response. AgentCore Gateway sends the tool arguments flat in `event` with
+the tool name in context.client_context.custom['bedrockAgentCoreToolName']
+("<target>___<tool>") and expects plain JSON. This shim is a NEW Lambda deployed in
+front of the original: it translates the Gateway event into the Bedrock event,
+invokes the original by ARN, and unwraps the response. The original is left
+untouched, so the source agent keeps working.
+
+Wire this as a CLI-managed `lambda` gateway-target (the CLI builds + deploys it on
+`agentcore deploy`); pass the original Lambda's ARN as the ORIGINAL_LAMBDA_ARN env
+var. See references/deploy.md.
+"""
+# <<< RENDER: delete this whole block after substituting the tokens below.
+#   {{ORIGINAL_LAMBDA_ARN}}  - the source action-group Lambda ARN
+#   {{SCHEMA_STYLE}}         - "function" (functionSchema) | "openapi" (apiSchema)
+# <<< /RENDER
+import json
+import os
+
+import boto3
+
+_ORIGINAL_ARN = os.environ.get("ORIGINAL_LAMBDA_ARN", "{{ORIGINAL_LAMBDA_ARN}}")
+_SCHEMA_STYLE = os.environ.get("SCHEMA_STYLE", "{{SCHEMA_STYLE}}")  # function | openapi
+_lambda = boto3.client("lambda")
+
+
+def _resolve_tool_and_args(event, context):
+    cc = getattr(context, "client_context", None)
+    custom = getattr(cc, "custom", None) if cc else None
+    raw = (custom or {}).get("bedrockAgentCoreToolName", "") if custom else ""
+    tool = raw.split("___", 1)[1] if "___" in raw else raw
+    args = event if isinstance(event, dict) else {}
+    return tool, args
+
+
+def _to_bedrock_event(tool, args):
+    """Build the Bedrock-Agents envelope the original handler expects."""
+    params = [{"name": k, "value": v, "type": "string"} for k, v in args.items()]
+    base = {"messageVersion": "1.0", "actionGroup": "migrated", "parameters": params}
+    if _SCHEMA_STYLE == "openapi":
+        base.update(
+            {
+                "apiPath": args.pop("__apiPath", f"/{tool}"),
+                "httpMethod": args.pop("__httpMethod", "POST"),
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "properties": [{"name": k, "value": v} for k, v in args.items()]
+                        }
+                    }
+                },
+            }
+        )
+    else:
+        base["function"] = tool
+    return base
+
+
+def _unwrap(resp):
+    """Pull the tool output out of the Bedrock-Agents response envelope."""
+    if not isinstance(resp, dict):
+        return {"body": resp}
+    r = resp.get("response", {})
+    fr = r.get("functionResponse", {})
+    if fr:
+        body = fr.get("responseBody", {}).get("TEXT", {}).get("body")
+        if body is not None:
+            return {"body": body}
+    api = r.get("apiResponse", {})
+    if api:
+        body = api.get("responseBody", {}).get("application/json", {}).get("body")
+        if body is not None:
+            return {"body": body}
+    return resp  # some Lambdas already return plain JSON
+
+
+def lambda_handler(event, context):
+    tool, args = _resolve_tool_and_args(event, context)
+    bedrock_event = _to_bedrock_event(tool, dict(args))
+    out = _lambda.invoke(
+        FunctionName=_ORIGINAL_ARN,
+        InvocationType="RequestResponse",
+        Payload=json.dumps(bedrock_event).encode("utf-8"),
+    )
+    payload = json.loads(out["Payload"].read() or b"{}")
+    return _unwrap(payload)
