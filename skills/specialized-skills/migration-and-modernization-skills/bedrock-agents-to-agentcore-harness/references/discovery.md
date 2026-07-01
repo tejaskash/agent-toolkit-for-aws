@@ -30,3 +30,5 @@ If discovery fails outright, stop and report. Do not partially migrate from an i
 
 ## Manifest schema — the script is the source of truth
 `scripts/fetch_bedrock_agent.py` defines the manifest shape; don't duplicate a schema spec here (it would drift). Top-level keys it writes: `discovery` (account/region/caller/version/warnings), `agent`, `agentCollaborationMode`, `orchestrationType`, `executionRole`, `actionGroups`, `knowledgeBases`, `collaborators`, `aliasesAndVersions`. The **Path B (AWS CLI) fallback must assemble the same keys** so downstream phases read one shape regardless of path.
+
+Each action group entry includes a `_builtInType` field (e.g. `"AMAZON.CodeInterpreter"`, `"AMAZON.UserInput"`) when the group is a built-in. Use this for classification instead of inferring from the group name or executor shape.
