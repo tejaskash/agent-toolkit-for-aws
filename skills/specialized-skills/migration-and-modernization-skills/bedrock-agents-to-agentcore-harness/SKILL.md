@@ -52,7 +52,7 @@ Completion criterion: manifest written and inventory presented.
 
 ### Phase 3 — Eligibility gate
 
-Check the manifest against the eligibility rubric in [`references/eligibility.md`](references/eligibility.md). Any **hard-stop** condition (multimodal input, unresolvable multi-agent graph, unreachable KB, custom orchestration) ends the migration here.
+Check the manifest against the eligibility rubric in [`references/eligibility.md`](references/eligibility.md). Any **hard-stop** condition (multimodal input, multi-agent collaboration, unreachable KB, custom orchestration) ends the migration here.
 
 If a gate fails: **stop**, tell the user exactly which condition failed and why, and suggest manual alternatives. Do not migrate part of an ineligible agent.
 
@@ -62,7 +62,7 @@ Completion criterion: every hard-stop condition checked and explicitly cleared, 
 
 The agent is eligible, but not every component migrates with full fidelity. Before planning, show the user a **per-component ledger** classifying each discovered component three ways:
 
-- **clean** — behavior preserved. Most components land here: action groups via shim, *any* KB (MANAGED via connector, others via KB shim — both reproduce retrieval), CodeInterpreter built-in, guardrail, model, and managed memory (the standard harness memory, not a downgrade).
+- **clean** — behavior preserved. Most components land here: action groups via shim, *any* KB (MANAGED via connector, others via KB shim — both reproduce retrieval), CodeInterpreter built-in, model + inference params, the guardrail (via the model config's `additionalParams` — see [`references/mapping.md`](references/mapping.md)), and managed memory (the standard harness memory, not a downgrade).
 - **degraded** — a genuine fidelity change the user should weigh, e.g. a non-DEFAULT orchestration/pre-processing prompt whose business logic can't be cleanly folded into the system prompt, or any behavior the migration can only approximate.
 - **cannot** — no harness equivalent, capability is lost (e.g. Return-of-Control action groups).
 
@@ -78,7 +78,7 @@ Completion criterion: user approved the written plan.
 
 ### Phase 6 — Implement & deploy
 
-Drive the CLI per the approved plan, following the **two-phase deploy** sequence in [`references/deploy.md`](references/deploy.md): scaffold, add gateway + targets + harness + shims, deploy, attach the gateway tool to the harness, deploy again. Generate shim Lambda code and tool schemas by **adapting** the templates in `assets/templates/`; render every `{{TOKEN}}`, delete optional blocks, and verify no markers remain before deploying. Deploy into the **source agent's region** (mirror). If deploy fails, surface the error — **fail loudly**, never silently work around it.
+Drive the CLI per the approved plan, following the **two-phase deploy** sequence in [`references/deploy.md`](references/deploy.md): scaffold, add gateway + targets + harness + shims, deploy, attach the gateway tool to the harness, deploy again. Generate shim Lambda code and tool schemas by **adapting** the templates in `assets/templates/`; render every `{{TOKEN}}`, delete optional blocks, and verify no markers remain before deploying. Deploy into the **source agent's region** (mirror) — **but note `agentcore create` silently defaults the deploy target to us-east-1; set the region in `aws-targets.json` right after scaffold (see [`references/deploy.md`](references/deploy.md)), or the shims can't reach the source's by-ARN Lambdas/KB.** If deploy fails, surface the error — **fail loudly**, never silently work around it.
 
 Completion criterion: `agentcore deploy` reports success. Verification is deploy-success-only; deeper parity is out of scope.
 

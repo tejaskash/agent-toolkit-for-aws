@@ -8,6 +8,8 @@ A Bedrock action-group Lambda is invoked with the Bedrock event envelope (`messa
 
 **Default: proxy-by-ARN.** Create a *new* shim Lambda ([`lambda_shim.py.tmpl`](../assets/templates/lambda_shim.py.tmpl)) that translates the Gateway event into the Bedrock event, invokes the original Lambda by ARN, and unwraps its response. This leaves the original Lambda **untouched**, so the source agent keeps working — editing the original in place can change its response shape and break the source agent. The original's ARN is passed to the shim as an env var.
 
+**OpenAPI action groups: pass the route TEMPLATE verbatim, never substitute.** Bedrock invokes an OpenAPI action-group Lambda with `apiPath` set to the literal route *template* (e.g. `/customer/{customer_id}`) and delivers path-param *values* separately in `parameters`. The original Lambda dispatches by matching that template exactly, so the shim must send it unchanged — substituting the value into the path (`/customer/tkashina`) matches no template and the original falls through to its unhandled-op branch. Render the shim's `_OP_ROUTES` table (operationId → `{method, apiPath-template}`) from the **source OpenAPI schema**, copying each path key as-is with placeholders intact. Keep path-param values in `parameters`; do not inline them into `apiPath`.
+
 Each action group becomes one Gateway **`lambda`** target (CLI-managed code — the CLI builds and deploys the shim from its source path during `agentcore deploy`; see [`deploy.md`](deploy.md)) with a tool-schema file holding **one entry per function/operation** in that action group.
 
 ### Tool schemas — mirror exactly
@@ -38,8 +40,17 @@ Use the harness's **managed memory**, which is on by default — the harness aut
 
 Reference: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-memory.html
 
-## Guardrail → model config
-Wire the source `guardrailConfiguration` (`guardrailIdentifier` + the **numeric** version, never DRAFT) onto the harness model config.
+## Model parameters → harness model config (`HarnessBedrockModelConfig`)
+The harness Bedrock model config has these fields: `modelId` (required), `maxTokens`, `temperature`, `topP`, `apiFormat` (`converse_stream` | `responses` | `chat_completions`), and **`additionalParams`** — a JSON object passed through to the Bedrock provider call unchanged. The typed inference params (`--model-id`, `--model-max-tokens`, `--temperature`, `--top-p`) set via `agentcore add harness` flags; everything else (including the guardrail, below) goes in `additionalParams`. Set **only one** of temperature/top-p when the model rejects both (e.g. Claude Sonnet 4.5 errors if both are given).
+
+## Guardrail → `additionalParams` (clean)
+The source `guardrailConfiguration` migrates by passing it through the model config's **`additionalParams`**, which the harness forwards to the Bedrock Converse call. Map the source `guardrailIdentifier` + the **numeric** version (never DRAFT) into the Converse `guardrailConfig` shape inside `additionalParams`, e.g.:
+
+```json
+{ "guardrailConfig": { "guardrailIdentifier": "<id>", "guardrailVersion": "<numeric>" } }
+```
+
+Set this on the harness model config (via `agentcore.json`/`harness.json` or the `--additional-params` flag if exposed). This is a **clean** mapping — the migrated agent enforces the same guardrail. Confirm the exact `additionalParams` key against the current Bedrock Converse API shape before finalizing.
 
 ## Prompt → system prompt
 Fold the agent instruction into the harness `--system-prompt`. If `AMAZON.UserInput` was present, include the clarification instruction.

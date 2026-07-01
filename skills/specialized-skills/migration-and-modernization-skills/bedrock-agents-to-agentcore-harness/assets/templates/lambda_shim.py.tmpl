@@ -16,6 +16,10 @@ var. See references/deploy.md.
 # <<< RENDER: delete this whole block after substituting the tokens below.
 #   {{ORIGINAL_LAMBDA_ARN}}  - the source action-group Lambda ARN
 #   {{SCHEMA_STYLE}}         - "function" (functionSchema) | "openapi" (apiSchema)
+#   {{OP_ROUTES}}            - (openapi only) JSON object mapping each operationId to
+#                             its {"method","apiPath"} from the SOURCE OpenAPI schema.
+#                             apiPath MUST be the literal route TEMPLATE, e.g.
+#                             "/customer/{customer_id}" — NOT a value-substituted path.
 # <<< /RENDER
 import json
 import os
@@ -24,6 +28,13 @@ import boto3
 
 _ORIGINAL_ARN = os.environ.get("ORIGINAL_LAMBDA_ARN", "{{ORIGINAL_LAMBDA_ARN}}")
 _SCHEMA_STYLE = os.environ.get("SCHEMA_STYLE", "{{SCHEMA_STYLE}}")  # function | openapi
+
+# operationId -> {"method": <HTTP method>, "apiPath": <route TEMPLATE>}.
+# Rendered from the source OpenAPI schema. The apiPath is the template with
+# placeholders intact (e.g. "/customer/{customer_id}") because the original Bedrock
+# Lambda dispatches by matching that exact template; path-param VALUES stay in the
+# parameters array, never substituted into the path.
+_OP_ROUTES = {{OP_ROUTES}}
 _lambda = boto3.client("lambda")
 
 
@@ -41,10 +52,17 @@ def _to_bedrock_event(tool, args):
     params = [{"name": k, "value": v, "type": "string"} for k, v in args.items()]
     base = {"messageVersion": "1.0", "actionGroup": "migrated", "parameters": params}
     if _SCHEMA_STYLE == "openapi":
+        # Look up the route TEMPLATE for this operationId and pass it verbatim.
+        route = _OP_ROUTES.get(tool)
+        if route is None:
+            raise ValueError(
+                f"No OpenAPI route for operationId {tool!r}; _OP_ROUTES must be "
+                "rendered from the source schema."
+            )
         base.update(
             {
-                "apiPath": args.pop("__apiPath", f"/{tool}"),
-                "httpMethod": args.pop("__httpMethod", "POST"),
+                "apiPath": route["apiPath"],       # literal template — never substitute values
+                "httpMethod": route["method"],
                 "requestBody": {
                     "content": {
                         "application/json": {

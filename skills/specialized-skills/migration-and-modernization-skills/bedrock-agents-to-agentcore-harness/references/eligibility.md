@@ -11,9 +11,9 @@ State the result of *every* condition to the user, not just the first failure �
 **Why stop:** the harness path validated by this skill is text-in/text-out. A multimodal harness flow has not been verified, so migrating one risks silent behavior loss.
 **Alternative:** keep the agent on Bedrock until a multimodal harness path is validated, or migrate only if the user accepts dropping image/audio and re-tests manually.
 
-### 2. Unresolvable multi-agent graph
-**Signal:** `agentCollaborationMode` is `SUPERVISOR` or `SUPERVISOR_ROUTER` and one or more collaborators in `manifest.collaborators` cannot be resolved — owned by another team, in another account, or not discoverable.
-**Why stop:** migrating a supervisor without its collaborators leaves dangling references; the result is a broken agent. You cannot migrate half a graph.
+### 2. Multi-agent collaboration
+**Signal:** `agentCollaborationMode` is `SUPERVISOR` or `SUPERVISOR_ROUTER` (any collaboration — regardless of whether the collaborators are resolvable).
+**Why stop:** migrating a multi-agent graph to a harness is out of scope for this skill. There is no supported path here — do not attempt to flatten collaborators into the supervisor's prompt, wire them as sub-agents, or migrate the supervisor alone (which leaves dangling references). Hard-stop and report; the user can migrate a single non-collaborating agent, or handle the graph manually.
 
 ### 3. Unreachable knowledge base
 **Signal:** an associated KB is in an account/region the migration's credentials cannot reach (cross-account/region with no access).
