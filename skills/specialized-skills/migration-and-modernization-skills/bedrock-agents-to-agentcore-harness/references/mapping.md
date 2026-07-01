@@ -20,7 +20,7 @@ Reproduce the source action group's schema faithfully into the tool-schema file 
 Fetch the KB and read `knowledgeBaseConfiguration.type`. Routing is a single binary so the skill never has to track an evolving list of KB types:
 
 - **`MANAGED`** → native Gateway connector: `add gateway-target --type connector --connector bedrock-knowledge-bases --knowledge-base-id <id>`.
-- **anything other than `MANAGED`** → **KB shim** ([`kb_shim.py.tmpl`](../assets/templates/kb_shim.py.tmpl)): a `lambda` Gateway target that calls `bedrock-agent-runtime:Retrieve` and returns MCP-shaped passages, preserving any non-default retrieval config (reranker, metadata filter, hybrid override, top-k) rendered from the manifest's KB association.
+- **anything other than `MANAGED`** → **KB shim** ([`kb_shim.py.tmpl`](../assets/templates/kb_shim.py.tmpl)): a shim Lambda (deployed by you, wired as a `lambda-function-arn` gateway target — see [`deploy.md`](deploy.md)) that calls `bedrock-agent-runtime:Retrieve` and returns MCP-shaped passages, preserving any non-default retrieval config (reranker, metadata filter, hybrid override, top-k) rendered from the manifest's KB association.
 
 Both paths reproduce the source agent's retrieval, so the choice is wiring, not fidelity — neither is a loss. (An *unreachable* KB is a hard-stop — see [`eligibility.md`](eligibility.md). Type is never the blocker.)
 

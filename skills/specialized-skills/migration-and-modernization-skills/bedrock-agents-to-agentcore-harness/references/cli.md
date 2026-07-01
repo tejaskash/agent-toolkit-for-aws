@@ -29,3 +29,8 @@ agentcore deploy --help
 ```
 
 If a required flag is **absent**, stop — don't generate commands against a surface that no longer exists. Update the CLI (`npm install -g @aws/agentcore@latest`) and re-probe, or update this skill if the references assume a flag the CLI renamed.
+
+## Never reverse-engineer the CLI bundle
+When a CLI fact you need is **not** answered by `--help`, `.llm-context`, the hosted schema, or these references, do **not** grep or read the CLI's compiled/minified source (`node_modules/@aws/agentcore/dist/**`, `cli/index.mjs`, etc.). Reverse-engineering a minified bundle is unreliable (internal names, zod-mangled schemas, wizard-only code paths that aren't reachable non-interactively — e.g. the internal `"lambda"` target type that `--type lambda` rejects), and it produces confident-but-wrong conclusions.
+
+Instead, when a needed fact is genuinely unavailable from the sanctioned sources: **stop and ask the user**, or state the unknown explicitly and proceed with the documented path — never infer behavior from the bundle. If the fact turns out to be load-bearing and missing from this skill, that's a signal to update the skill, not to spelunk.

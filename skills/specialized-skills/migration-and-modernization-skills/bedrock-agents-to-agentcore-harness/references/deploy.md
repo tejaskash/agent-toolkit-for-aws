@@ -15,37 +15,22 @@ A gateway tool can only attach to the harness *after* the gateway and its target
 
 1. **Scaffold** the project: `agentcore create` (plain). **Do not use `agentcore create --import` / `--type import`** — that path imports a Bedrock Agent into a *code* project, not a Harness, and is not the recommended migration route. This skill builds a Harness explicitly via `add harness` + `add gateway`/`add tool`; the source agent's config comes from the discovery manifest, not from an `--import`.
 2. **Add infrastructure** that doesn't depend on a deployed gateway:
-   - `agentcore add gateway`, then one `agentcore add gateway-target` per migrated action group / KB shim.
+   - **Deploy the shim Lambdas first** (see "How shims are deployed" below), then `agentcore add gateway` and one `agentcore add gateway-target --type lambda-function-arn --lambda-arn <shim-arn> --tool-schema-file <schema>` per migrated action group / KB shim.
    - `agentcore add harness` (`--model-id` = source `foundationModel`; inference params via `--temperature`/`--top-p`/`--model-max-tokens`; system prompt folded in; managed memory left on by default). The source **guardrail** rides in the model config's `additionalParams` (Converse `guardrailConfig`) — see [`mapping.md`](mapping.md).
    - self-contained harness tools: `agentcore add tool --type agentcore_code_interpreter` (if the source had CodeInterpreter).
-3. **First deploy:** `agentcore deploy` — builds the shim Lambdas, creates the gateway, targets, harness, and memory.
+3. **First deploy:** `agentcore deploy` — creates the gateway, targets, harness, and memory.
 4. **Attach the gateway tool** now that the gateway is deployed: `agentcore add tool --harness <name> --type agentcore_gateway --gateway-arn <deployed-gateway-arn> --outbound-auth awsIam`. Use the deployed gateway **ARN** (from `agentcore status` / stack outputs), not just the project name.
 5. **Second deploy:** `agentcore deploy` — applies the harness's new gateway tool.
 
-## Shim Lambdas are CLI-managed (`lambda` target type), not hand-deployed
-The gateway-target type for a shim is **`lambda`** (CLI-managed code), not `lambda-function-arn` (a pre-existing ARN). With a `lambda` target the CLI **builds and deploys the Lambda from a source path as part of `agentcore deploy`**, owning its runtime, handler, IAM policy, and lifecycle — no separate `aws lambda create-function` or hand-rolled execution role. Point each shim target at its rendered template code:
+## How shims are deployed (verified on CLI 0.21.1)
+There is **no non-interactive `--type lambda` gateway-target that builds shim code for you.** `agentcore add gateway-target --type` accepts only: `mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn, http-runtime, connector`. `--type lambda` is rejected (`Invalid type: lambda`). So do **not** rely on the CLI to build a shim Lambda from a source path via a `lambda` target.
 
-```
-agentcore add gateway-target --gateway <gw> --name <tool> --type lambda \
-  --host Lambda --language Python \
-  # CLI prompts for / takes the code path + handler; point it at the rendered
-  # kb_shim.py or lambda_shim.py (see assets/templates/), and the tool-schema.
-```
+**The reliable path: deploy the shim Lambda yourself, then wire it by ARN.**
+1. Render the shim template (`assets/templates/{kb_shim,lambda_shim}.py.tmpl`), zip it, and create the Lambda with boto3 / `aws lambda create-function` (give it a role with the perms it needs: `bedrock-agent-runtime:Retrieve` for the KB shim; `lambda:InvokeFunction` on the original for the AG proxy shim). Pass config via env vars (`KB_ID`, `ORIGINAL_LAMBDA_ARN`, `SCHEMA_STYLE`, `OP_ROUTES`).
+2. Wire it as a gateway target: `agentcore add gateway-target --type lambda-function-arn --lambda-arn <shim-arn> --tool-schema-file <schema> --gateway <gw>`.
+3. Grant the gateway permission to invoke the shim if required.
 
-(`lambda-function-arn` is only for wiring an *existing* Lambda by ARN — not used for shims the migration creates. The AG proxy-by-ARN shim is still a `lambda` target; it receives the *original* Lambda's ARN as an env var to invoke at runtime.)
-
-### Shim code layout (CLI-managed `lambda` targets)
-A CLI-managed `lambda` target resolves its code path **relative to project root** and requires a **`pyproject.toml` per tool directory** (setuptools). So:
-- Put each shim in its own directory under **`tools/`** at the project root — **not** `agentcore/tools/` (the CLI does not pick up code under `agentcore/`).
-- Add a minimal setuptools `pyproject.toml` in each shim's directory.
-
-```
-<project>/
-  tools/
-    kb_shim/        pyproject.toml  kb_shim.py
-    booking_shim/   pyproject.toml  lambda_shim.py
-  agentcore/        # CLI config + cdk (do NOT put tool code here)
-```
+(The `--host Lambda --language Python` flags belong to the **`mcp-server`** target type — the CLI builds and hosts your code as a Lambda-backed MCP *server*, a different shape than a plain tool Lambda. If you use that path instead, its code lives in a project-root `tools/<name>/` dir with a per-tool setuptools `pyproject.toml` — tool code under `agentcore/` is NOT picked up. For straightforward shims, prefer the deploy-it-yourself + `lambda-function-arn` path above.)
 
 ## One action group = one target, with all its functions
 A Bedrock action group can expose several functions/operations (up to three), each with its own schema. The tool-schema file is a **`ToolDefinition[]` array**, so a single Lambda target carries every function in that action group — one array entry per function/operationId. Do not split an action group into multiple targets. [`tool_schema.json.tmpl`](../assets/templates/tool_schema.json.tmpl) is already an array; add one entry per function, mirroring the source schema exactly ([`mapping.md`](mapping.md)).
@@ -54,5 +39,5 @@ A Bedrock action group can expose several functions/operations (up to three), ea
 The migration is done when `agentcore deploy` reports success. Before treating it as complete, **prompt the user** to confirm the deploy succeeded and they're satisfied — surface the deployed harness/gateway ARNs from `agentcore status`. Deeper parity (invoking the harness, comparing against the source) is out of scope unless the user asks.
 
 ## Templates → CLI inputs
-- KB shim / AG shim Lambda code: adapt the `assets/templates/*.tmpl` files, render every `{{TOKEN}}`, delete optional blocks, and verify no markers remain before pointing a `lambda` target at the code.
+- KB shim / AG shim Lambda code: adapt the `assets/templates/*.tmpl` files, render every `{{TOKEN}}`, delete optional blocks, and verify no markers remain before deploying the shim Lambda and wiring it via `lambda-function-arn` (see "How shims are deployed").
 - Tool-schema files: one array per target, one entry per source function/operation, mirroring the source schema exactly ([`mapping.md`](mapping.md)).

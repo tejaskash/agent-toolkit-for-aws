@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -332,6 +333,8 @@ def main() -> int:
                 f"Fetched DRAFT but non-DRAFT aliases exist ({tag}). DRAFT may diverge from production."
             )
 
+    out_dir = os.path.dirname(os.path.abspath(args.out))
+    os.makedirs(out_dir, exist_ok=True)
     with open(args.out, "w") as f:
         json.dump(manifest, f, indent=2, default=str)
 
