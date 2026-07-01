@@ -1,8 +1,8 @@
 # AgentCore CLI
 
-The migration tool is the AgentCore CLI, package **`@aws/agentcore`** — use the **latest** version. Its command/flag surface shifts between releases, so the skill **verifies the surface live** and prefers **dynamic sources** over a hardcoded flag table that goes stale.
+The migration tool is the AgentCore CLI, package **`@aws/agentcore`** — use the **latest** version. Its command/flag surface shifts between releases, so **verify it live** rather than trusting a hardcoded flag table.
 
-## Authoritative, always-current sources (prefer these over any list)
+## Authoritative, always-current sources
 
 - Installed surface: `agentcore --help`, then `agentcore <command> --help` for each command about to be used.
 - Per-project schema the CLI ships: `https://schema.agentcore.aws.dev/v1/agentcore.json` inside any scaffolded project (authoritative shape for `agentcore.json`, harness, gateway, target, tool-schema). Read before hand-editing config.

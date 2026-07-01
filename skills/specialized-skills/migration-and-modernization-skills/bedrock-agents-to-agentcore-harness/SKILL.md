@@ -1,6 +1,6 @@
 ---
 name: bedrock-agents-to-agentcore-harness
-description: Migrate a Bedrock Agent to an AgentCore Harness using the AgentCore CLI. Use when the user wants to migrate, port, move, or convert a Bedrock Agent (by id, name, or ARN) to AgentCore Harness — including its action groups, knowledge bases, guardrails, memory, and prompts.
+description: Migrate a Bedrock Agent to an AgentCore Harness using the AgentCore CLI. Use when the user wants to migrate (or port/convert) a Bedrock Agent — given its id, name, or ARN — to an AgentCore Harness.
 ---
 
 # Bedrock Agents → AgentCore Harness
@@ -14,11 +14,11 @@ Two ideas run through every phase:
 
 ## Capture the request first
 
-The triggering request *is* the input. Before Phase 0, extract whatever the user already gave — an agent **id/name/ARN**, a **region**, a **profile/account** — and carry it forward. The phases then **confirm** these hints, never re-ask what was supplied: if the user said "migrate agent X in us-east-1," Phase 0 confirms that region rather than asking for one. Identity resolution (Phase 1) runs *after* preflight, because listing agents to disambiguate a name or empty input needs a confirmed account + region first.
+The triggering request *is* the input. Extract whatever the user gave — agent **id/name/ARN**, **region**, **profile/account** — and **confirm** it in the phases below rather than re-asking. Identity resolution (Phase 1) runs *after* preflight, since listing agents to disambiguate a name needs a confirmed account + region first.
 
 ## Phases
 
-Run in order. Finish each phase, summarize what happened, then continue. Do not interleave.
+Finish each phase and summarize before the next.
 
 ### Phase 0 — Preflight (environment gates)
 
@@ -38,15 +38,9 @@ Completion criterion: the user has confirmed the exact `(account, region, agentI
 
 ### Phase 2 — Discovery
 
-Run the bundled fetcher to snapshot the agent into one manifest:
+Snapshot the agent into one manifest (`./out/source-agent.json`) using the bundled fetcher — or the AWS-CLI fallback if `boto3` is absent. Both paths and the manifest shape are in [`references/discovery.md`](references/discovery.md).
 
-```bash
-python scripts/fetch_bedrock_agent.py \
-  --agent-id <id> --agent-version <resolved> --region <region> \
-  --inline-s3-schemas --out ./out/source-agent.json
-```
-
-Read the manifest and present a **concise, human-readable inventory** — a scannable list or small table (model; action groups by name + type; KBs + type; guardrail; memory; collaboration), not a prose paragraph. Edge cases: [`references/discovery.md`](references/discovery.md).
+Read the manifest and present a **concise, human-readable inventory** — a scannable list or small table (model; action groups by name + type; KBs + type; guardrail; memory; collaboration), not a prose paragraph.
 
 Completion criterion: manifest written and inventory presented.
 
@@ -54,7 +48,7 @@ Completion criterion: manifest written and inventory presented.
 
 Check the manifest against the eligibility rubric in [`references/eligibility.md`](references/eligibility.md). Any **hard-stop** condition (multimodal input, multi-agent collaboration, unreachable KB, custom orchestration) ends the migration here.
 
-If a gate fails: **stop**, tell the user exactly which condition failed and why, and suggest manual alternatives. Do not migrate part of an ineligible agent.
+If a gate fails: **stop**, tell the user exactly which condition failed and why, and suggest manual alternatives.
 
 Completion criterion: every hard-stop condition checked and explicitly cleared, or the migration stopped with a reported reason.
 
@@ -78,7 +72,7 @@ Completion criterion: user approved the written plan.
 
 ### Phase 6 — Implement & deploy
 
-Drive the CLI per the approved plan, following the **two-phase deploy** sequence in [`references/deploy.md`](references/deploy.md): scaffold, add gateway + targets + harness + shims, deploy, attach the gateway tool to the harness, deploy again. Generate shim Lambda code and tool schemas by **adapting** the templates in `assets/templates/`; render every `{{TOKEN}}`, delete optional blocks, and verify no markers remain before deploying. Deploy into the **source agent's region** (mirror) — **but note `agentcore create` silently defaults the deploy target to us-east-1; set the region in `aws-targets.json` right after scaffold (see [`references/deploy.md`](references/deploy.md)), or the shims can't reach the source's by-ARN Lambdas/KB.** If deploy fails, surface the error — **fail loudly**, never silently work around it.
+Drive the CLI per the approved plan, following [`references/deploy.md`](references/deploy.md) end to end: deploy the shim Lambdas, add the gateway + targets + harness, then the **two-phase deploy** (deploy, attach the gateway tool, deploy again). Generate shim code and tool schemas by **adapting** the templates in `assets/templates/` per [`references/mapping.md`](references/mapping.md). Deploy into the **source agent's region** (mirror) — set that region before the first deploy per deploy.md's region-trap warning. If deploy fails, surface the error — **fail loudly**, never silently work around it.
 
 Completion criterion: `agentcore deploy` reports success. Verification is deploy-success-only; deeper parity is out of scope.
 

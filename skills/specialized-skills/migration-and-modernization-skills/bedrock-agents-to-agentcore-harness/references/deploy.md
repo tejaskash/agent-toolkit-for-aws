@@ -39,5 +39,5 @@ A Bedrock action group can expose several functions/operations (up to three), ea
 The migration is done when `agentcore deploy` reports success. Before treating it as complete, **prompt the user** to confirm the deploy succeeded and they're satisfied — surface the deployed harness/gateway ARNs from `agentcore status`. Deeper parity (invoking the harness, comparing against the source) is out of scope unless the user asks.
 
 ## Templates → CLI inputs
-- KB shim / AG shim Lambda code: adapt the `assets/templates/*.tmpl` files, render every `{{TOKEN}}`, delete optional blocks, and verify no markers remain before deploying the shim Lambda and wiring it via `lambda-function-arn` (see "How shims are deployed").
+- KB shim / AG shim Lambda code: adapt the `assets/templates/*.tmpl` files (rendering rules in [`mapping.md`](mapping.md)), then deploy + wire via `lambda-function-arn` per "How shims are deployed" above.
 - Tool-schema files: one array per target, one entry per source function/operation, mirroring the source schema exactly ([`mapping.md`](mapping.md)).
