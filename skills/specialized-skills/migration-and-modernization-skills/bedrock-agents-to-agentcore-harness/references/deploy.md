@@ -9,6 +9,9 @@ Immediately after `agentcore create`, before any `add`/`deploy`: **edit `agentco
 
 If a deploy already landed in the wrong region: `aws cloudformation delete-stack` the wrong-region stack, reset `agentcore/.cli/deployed-state.json` to `{"targets":{}}`, fix `aws-targets.json`, then redeploy.
 
+## Naming constraints
+Harness names (and project names) must match `^[a-zA-Z][a-zA-Z0-9_]{0,39}$` — **no hyphens**, underscores only. A name like `support-harness` is rejected; use `support_harness`. Project names must be PascalCase alphanumeric (no hyphens either).
+
 ## Two-phase deploy
 
 A gateway tool can only attach to the harness *after* the gateway and its targets exist in deployed state (`agentcore add tool --type agentcore_gateway` reads the gateway's deployed tool list — it reports "No deployed targets found" against a not-yet-deployed gateway). So the harness migration deploys twice:
@@ -21,6 +24,43 @@ A gateway tool can only attach to the harness *after* the gateway and its target
 3. **First deploy:** `agentcore deploy` — creates the gateway, targets, harness, and memory.
 4. **Attach the gateway tool** now that the gateway is deployed: `agentcore add tool --harness <name> --type agentcore_gateway --gateway-arn <deployed-gateway-arn> --outbound-auth awsIam`. Use the deployed gateway **ARN** (from `agentcore status` / stack outputs), not just the project name.
 5. **Second deploy:** `agentcore deploy` — applies the harness's new gateway tool.
+
+### Two-phase deploy example (copy-paste with your values)
+
+```bash
+# --- Phase 1: scaffold + add everything except gateway tool ---
+agentcore create --project-name MyMigratedAgent --no-agent --skip-python-setup
+cd MyMigratedAgent
+
+# Fix region immediately
+echo '[{ "name": "default", "account": "<ACCOUNT_ID>", "region": "<SOURCE_REGION>" }]' > agentcore/aws-targets.json
+
+# Add gateway and targets
+agentcore add gateway --name gw1 --protocol-type MCP
+agentcore add gateway-target --type lambda-function-arn \
+  --lambda-arn arn:aws:lambda:<REGION>:<ACCOUNT>:function:<SHIM_NAME> \
+  --tool-schema-file path/to/tool-schema.json --gateway gw1 --name my_target
+
+# Add harness (underscores only, no hyphens!)
+agentcore add harness --name my_harness \
+  --model-id <SOURCE_MODEL_ID> --temperature 0.1 --model-max-tokens 4096 \
+  --system-prompt "..."
+
+# Add self-contained tools
+agentcore add tool --harness my_harness --type agentcore_code_interpreter --name code_interpreter
+
+# --- First deploy ---
+agentcore deploy -y
+# Wait for success — note the gateway ARN in the outputs
+
+# --- Phase 2: attach gateway tool + redeploy ---
+agentcore add tool --harness my_harness --type agentcore_gateway --name gw_tool \
+  --gateway-arn arn:aws:bedrock-agentcore:<REGION>:<ACCOUNT>:gateway/<GW_ID> \
+  --outbound-auth awsIam
+
+agentcore deploy -y
+# Done — harness is READY with gateway tools attached
+```
 
 ## How shims are deployed (verified on CLI 0.21.1)
 There is **no non-interactive `--type lambda` gateway-target that builds shim code for you.** `agentcore add gateway-target --type` accepts only: `mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn, http-runtime, connector`. `--type lambda` is rejected (`Invalid type: lambda`). So do **not** rely on the CLI to build a shim Lambda from a source path via a `lambda` target.

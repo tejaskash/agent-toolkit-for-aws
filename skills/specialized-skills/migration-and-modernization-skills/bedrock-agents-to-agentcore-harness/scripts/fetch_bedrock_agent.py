@@ -118,6 +118,11 @@ def fetch_action_groups(
             ag = _strip_response_metadata(detail).get("agentActionGroup", detail)
             if inline_s3 and isinstance(ag, dict) and "apiSchema" in ag:
                 ag["apiSchema"] = _maybe_inline_s3_schema(s3_client, ag.get("apiSchema"))
+            # Tag built-in action groups explicitly for easier downstream classification
+            if isinstance(ag, dict):
+                sig = ag.get("parentActionSignature") or ag.get("parentActionGroupSignature") or ""
+                if sig.startswith("AMAZON."):
+                    ag["_builtInType"] = sig
             out.append(ag)
     return out
 

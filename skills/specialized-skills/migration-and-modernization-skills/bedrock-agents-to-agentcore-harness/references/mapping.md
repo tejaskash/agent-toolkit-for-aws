@@ -50,6 +50,16 @@ The source `guardrailConfiguration` migrates by passing it through the model con
 { "guardrailConfig": { "guardrailIdentifier": "<id>", "guardrailVersion": "<numeric>" } }
 ```
 
+### Resolving DRAFT to a numeric version
+If the source agent's `guardrailVersion` is `"DRAFT"`, you **must** resolve it to the latest published numeric version before setting it in `additionalParams` — the Converse API rejects DRAFT. Use:
+
+```bash
+aws bedrock list-guardrails --guardrail-identifier <guardrail-id> --region <region> \
+  --query 'guardrails[?status==`READY`].version' --output text
+```
+
+Pick the highest numeric version returned. If no published version exists (only DRAFT), warn the user that the guardrail cannot be applied until they publish it, and classify this component as **degraded** rather than clean.
+
 Set this on the harness model config (via `agentcore.json`/`harness.json` or the `--additional-params` flag if exposed). This is a **clean** mapping — the migrated agent enforces the same guardrail. Confirm the exact `additionalParams` key against the current Bedrock Converse API shape before finalizing.
 
 ## Prompt → system prompt
