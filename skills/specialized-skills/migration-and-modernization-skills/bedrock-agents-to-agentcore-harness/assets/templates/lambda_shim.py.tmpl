@@ -9,10 +9,10 @@ front of the original: it translates the Gateway event into the Bedrock event,
 invokes the original by ARN, and unwraps the response. The original is left
 untouched, so the source agent keeps working.
 
-Deploy this shim Lambda yourself (zip + create-function with a role that can invoke
-the original), then wire it as a `lambda-function-arn` gateway target. Pass the
-original Lambda's ARN as the ORIGINAL_LAMBDA_ARN env var. See references/deploy.md
-"How shims are deployed".
+Do NOT zip or `create-function` this yourself. Place this rendered handler in a
+code-hosted gateway target's tool code location and let `agentcore deploy` build and
+deploy it (the CLI owns packaging + IAM). Pass the original Lambda's ARN to the shim
+as the ORIGINAL_LAMBDA_ARN env var. See references/deploy.md "How shims are deployed".
 """
 # <<< RENDER: delete this whole block after substituting the tokens below.
 #   {{ORIGINAL_LAMBDA_ARN}}  - the source action-group Lambda ARN

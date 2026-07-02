@@ -11,8 +11,8 @@ State the result of *every* condition to the user, not just the first failure �
 **Alternative:** keep on Bedrock until a multimodal path is validated, or migrate accepting that image/audio is dropped.
 
 ### 2. Multi-agent collaboration
-**Signal:** `agentCollaborationMode` is `SUPERVISOR` or `SUPERVISOR_ROUTER` — any collaboration, resolvable or not. Out of scope: do **not** flatten collaborators into the prompt, wire them as sub-agents, or migrate the supervisor alone.
-**Alternative:** migrate a single non-collaborating agent, or handle the graph manually.
+**Signal:** `agentCollaborationMode` is `SUPERVISOR` or `SUPERVISOR_ROUTER`. The supervisor is out of scope — do **not** flatten collaborators into its prompt, wire them as sub-agents, or migrate it alone (dangling references).
+**Alternative:** each collaborator is an ordinary Bedrock agent; any that doesn't itself collaborate can be migrated on its own (run this skill once per collaborator). Only the supervisor layer is excluded.
 
 ### 3. Unreachable knowledge base
 **Signal:** an associated KB is in an account/region the credentials cannot reach — so `bedrock-agent-runtime:Retrieve` can't reproduce its retrieval.
@@ -27,6 +27,7 @@ State the result of *every* condition to the user, not just the first failure �
 
 - **DRAFT-only agent** (no published version) — common; treat DRAFT as the source (see [`discovery.md`](discovery.md)).
 - **Mixed action-group schema styles** (`functionSchema` and OpenAPI in one agent).
-- **Managed KB with non-default retrieval config, code interpreter, guardrails, session memory** — all have harness targets (see [`mapping.md`](mapping.md)).
+- **Managed KB with non-default retrieval config, code interpreter, session memory** — all have harness targets (see [`mapping.md`](mapping.md)).
+- **An agent with a guardrail** — still eligible to migrate overall; the guardrail itself just can't be carried (see next note).
 
-(Return-of-Control action groups are eligible for migration overall but that *capability* can't be reproduced — classified **cannot** in the assessment, see [`mapping.md`](mapping.md).)
+(Two things are eligible for migration *overall* but whose *capability* can't be reproduced on the harness — classify each **cannot / degraded** in the assessment and surface to the user, see [`mapping.md`](mapping.md): **Return-of-Control action groups**, and the **guardrail** — the harness has no guardrail field and `--additional-params` is `lite_llm`-only.)

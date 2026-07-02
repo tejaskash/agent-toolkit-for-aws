@@ -7,7 +7,7 @@ Inputs the user may give: agent **id**, **name**, **ARN**, or nothing.
 - **Nothing:** list agents and present candidates.
 - **ARN:** the agent id is the last `/` segment.
 
-Default to the **production alias's** numbered version, not DRAFT: list aliases (`ListAgentAliases`), have the user identify the production alias, read its `routingConfiguration[0].agentVersion`. **DRAFT-only** (only the auto `TSTALIASID` → DRAFT, no numbered version) is a valid, eligible source — confirm and proceed. Honor an explicit "migrate DRAFT" request.
+Default to the **production alias's** numbered version, not DRAFT: list aliases (`ListAgentAliases`), have the user identify the production alias, read its `routingConfiguration[0].agentVersion`. **DRAFT-only** (only the auto `TSTALIASID` alias pointing at DRAFT, with no numbered version) is a valid, eligible source — confirm and proceed. Honor an explicit "migrate DRAFT" request.
 
 Confirm the full `(account, region, agentId, agentVersion, aliasId)` tuple before discovery.
 

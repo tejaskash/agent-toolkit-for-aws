@@ -3,7 +3,7 @@ name: bedrock-agents-to-agentcore-harness
 description: Migrate a Bedrock Agent to an AgentCore Harness using the AgentCore CLI. Use when the user wants to migrate (or port/convert) a Bedrock Agent — given its id, name, or ARN — to an AgentCore Harness.
 ---
 
-# Bedrock Agents → AgentCore Harness
+# Bedrock Agents to AgentCore Harness
 
 Migrate a Bedrock Agent into an AgentCore **Harness** (the managed agent loop) using the **AgentCore CLI**. The skill drives the CLI to scaffold and deploy; it never hand-rolls boto3 infrastructure the CLI owns.
 
@@ -16,6 +16,8 @@ Two ideas run through every phase:
 
 The triggering request *is* the input. Extract whatever the user gave — agent **id/name/ARN**, **region**, **profile/account** — and **confirm** it in the phases below rather than re-asking. Identity resolution (Phase 1) runs *after* preflight, since listing agents to disambiguate a name needs a confirmed account + region first.
 
+**Fail fast.** If the request *already* names a hard-stop disqualifier (multi-agent, custom orchestration, multimodal — see [`references/eligibility.md`](references/eligibility.md)), say so and stop before preflight, giving that condition's specific alternative. Phase 3 still runs the full gate for everything that clears this.
+
 ## Phases
 
 Finish each phase and summarize before the next.
@@ -26,7 +28,7 @@ Establish the migration runs against the account, region, and CLI the user inten
 
 1. Confirm the **CLI** is present and current per [`references/cli.md`](references/cli.md). Stop if it is missing or a required command/flag is absent.
 2. Resolve AWS credentials and run STS `GetCallerIdentity`. **Echo the account id, caller ARN, and resolved region back to the user and ask them to confirm or correct** before proceeding. Never assume the default profile is the right one.
-3. The migration deploys into the *source agent's* region (mirror). Confirm that region here; if the user supplied one in the request, confirm it rather than re-asking.
+3. Confirm the **source agent's region** here (if the user supplied one, confirm rather than re-ask). The harness must deploy there — but the CLI defaults elsewhere, so you set it explicitly before the first deploy (Phase 6; see deploy.md's region trap).
 
 Completion criterion: the user has confirmed `(account, region)` and the CLI passed its checks.
 
@@ -38,7 +40,7 @@ Completion criterion: the user has confirmed the exact `(account, region, agentI
 
 ### Phase 2 — Discovery
 
-Snapshot the agent into one manifest (`./out/source-agent.json`) using the bundled fetcher — or the AWS-CLI fallback if `boto3` is absent. Both paths and the manifest shape are in [`references/discovery.md`](references/discovery.md).
+Snapshot the agent into one manifest (`./out/source-agent.json`) — via the bundled `scripts/fetch_bedrock_agent.py` (needs python3 + boto3), or the `aws bedrock-agent` fallback when boto3 is absent. Both paths and the manifest shape are in [`references/discovery.md`](references/discovery.md).
 
 Read the manifest and present a **concise, human-readable inventory** — a scannable list or small table (model; action groups by name + type; KBs + type; guardrail; memory; collaboration), not a prose paragraph.
 
@@ -56,9 +58,9 @@ Completion criterion: every hard-stop condition checked and explicitly cleared, 
 
 The agent is eligible, but not every component migrates with full fidelity. Before planning, show the user a **per-component ledger** classifying each discovered component three ways:
 
-- **clean** — behavior preserved. Most components land here: action groups via shim, *any* KB (MANAGED via connector, others via KB shim — both reproduce retrieval), CodeInterpreter built-in, model + inference params, the guardrail (via the model config's `additionalParams` — see [`references/mapping.md`](references/mapping.md)), and managed memory (the standard harness memory, not a downgrade).
+- **clean** — behavior preserved. Most components land here: action groups via shim, *any* KB (MANAGED via connector, others via KB shim — both reproduce retrieval), CodeInterpreter built-in, model + inference params, and managed memory (the standard harness memory, not a downgrade).
 - **degraded** — a genuine fidelity change the user should weigh, e.g. a non-DEFAULT orchestration/pre-processing prompt whose business logic can't be cleanly folded into the system prompt, or any behavior the migration can only approximate.
-- **cannot** — no harness equivalent, capability is lost (e.g. Return-of-Control action groups).
+- **cannot** — no harness equivalent, capability is lost: Return-of-Control action groups, and the **guardrail** (the harness has no guardrail field; `--additional-params` is `lite_llm`-only — see [`references/mapping.md`](references/mapping.md)). Both must be surfaced to the user.
 
 Use the mapping in [`references/mapping.md`](references/mapping.md) to classify. Present the ledger and **pause for explicit acknowledgement** — the user must accept the *degraded* and *cannot* items before planning. Nothing irreversible has happened yet; this is informed consent on fidelity loss.
 
@@ -72,7 +74,7 @@ Completion criterion: user approved the written plan.
 
 ### Phase 6 — Implement & deploy
 
-Drive the CLI per the approved plan, following [`references/deploy.md`](references/deploy.md) end to end: deploy the shim Lambdas, add the gateway + targets + harness, then the **two-phase deploy** (deploy, attach the gateway tool, deploy again). Generate shim code and tool schemas by **adapting** the templates in `assets/templates/` per [`references/mapping.md`](references/mapping.md). Deploy into the **source agent's region** (mirror) — set that region before the first deploy per deploy.md's region-trap warning. If deploy fails, surface the error — **fail loudly**, never silently work around it.
+Drive the CLI per the approved plan, following [`references/deploy.md`](references/deploy.md) end to end: scaffold with `agentcore create` (the command is `create` — **never `init` or `--import`**), deploy the shim Lambdas, `add gateway`/`gateway-target`/`harness`, then the **two-phase deploy**. Set the deploy region before the first deploy (deploy.md's region trap). Generate shim code and tool schemas by **adapting** the templates in `assets/templates/` per [`references/mapping.md`](references/mapping.md). If deploy fails, surface the error — **fail loudly**, never silently work around it.
 
 Completion criterion: `agentcore deploy` reports success. Verification is deploy-success-only; deeper parity is out of scope.
 

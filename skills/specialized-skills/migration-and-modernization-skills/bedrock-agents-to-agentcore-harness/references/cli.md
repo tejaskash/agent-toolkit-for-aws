@@ -2,6 +2,8 @@
 
 The migration tool is the AgentCore CLI, package **`@aws/agentcore`** — use the **latest** version. Its command/flag surface shifts between releases, so **verify it live** rather than trusting a hardcoded flag table.
 
+The AgentCore CLI (`@aws/agentcore`) is **not** the same as the `bedrock-agentcore-starter-toolkit`. The starter toolkit is deprecated and not recommended — do not use it or its commands for this migration. Everything here uses `@aws/agentcore`.
+
 ## Authoritative, always-current sources
 
 - Installed surface: `agentcore --help`, then `agentcore <command> --help` for each command about to be used.

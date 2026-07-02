@@ -1,6 +1,6 @@
 [
   {
-    "_comment": "Tool-schema file for a lambda-function-arn Gateway target. One entry per tool/operation in the source action group. MIRROR the source schema EXACTLY — same names, types, and descriptions; do not rewrite or 'improve' them. Pass via `agentcore add gateway-target --tool-schema-file <this-file>`. Shape per the project's agentcore/.llm-context/agentcore.ts (ToolDefinition[]).",
+    "_comment": "Tool-schema file for a code-hosted shim Gateway target (the CLI builds the Lambda). One entry per tool/operation in the source action group. MIRROR the source schema EXACTLY — same names, types, and descriptions; do not rewrite or 'improve' them. Pass via `agentcore add gateway-target --tool-schema-file <this-file>`. Shape per the project's agentcore/.llm-context/agentcore.ts (ToolDefinition[]).",
     "name": "{{TOOL_NAME}}",
     "description": "{{TOOL_DESCRIPTION_FROM_SOURCE}}",
     "inputSchema": {
