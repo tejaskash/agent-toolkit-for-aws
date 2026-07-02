@@ -9,28 +9,22 @@ Immediately after `agentcore create`, before any `add`/`deploy`: **edit `agentco
 
 If a deploy already landed in the wrong region: `aws cloudformation delete-stack` the wrong-region stack, reset `agentcore/.cli/deployed-state.json` to `{"targets":{}}`, fix `aws-targets.json`, then redeploy.
 
-## Naming constraints
-Harness names (and project names) must match `^[a-zA-Z][a-zA-Z0-9_]{0,39}$` — **no hyphens**, underscores only. A name like `support-harness` is rejected; use `support_harness`. Project names must be PascalCase alphanumeric (no hyphens either).
+Names: harness and project names match `^[a-zA-Z][a-zA-Z0-9_]{0,39}$` — underscores, **no hyphens** (`support_harness`, not `support-harness`). Work in **one** project directory for the whole migration: `cd` into it after `create` and run every later command from there (`add`/`deploy` resolve the project from the cwd).
 
 ## Two-phase deploy
 
-A gateway tool can only attach to the harness *after* the gateway and its targets exist in deployed state (`agentcore add tool --type agentcore_gateway` — full flags in step 4 below — reads the gateway's deployed tool list, and reports "No deployed targets found" against a not-yet-deployed gateway). So the harness migration deploys twice:
+A gateway tool can only attach once the gateway and its targets are deployed (`add tool --type agentcore_gateway` reads the gateway's *deployed* tool list). So deploy twice:
 
-1. **Scaffold** the project: `agentcore create` (plain). **Do not use `agentcore create --import` / `--type import`** — that path imports a Bedrock Agent into a *code* project, not a Harness, and is not the recommended migration route. This skill builds a Harness explicitly via `add harness` + `add gateway`/`add tool`; the source agent's config comes from the discovery manifest, not from an `--import`.
+1. **Scaffold:** `agentcore create` (plain — **not `--import`**, which targets a code project, not a Harness).
+2. **Add** infra that doesn't need a deployed gateway:
+   - `agentcore add gateway`, then one **`lambda` code target** per action group / KB shim (see "How shims are deployed").
+   - `agentcore add harness` with `--model-id` (= source `foundationModel`), `--temperature`/`--top-p`/`--model-max-tokens` (only one of temperature/top-p when the model rejects both), and `--system-prompt` (folded instruction + non-DEFAULT override intent, per [`mapping.md`](mapping.md)). Managed memory stays on by default. The source **guardrail cannot be carried over** — see [`mapping.md`](mapping.md).
+   - if the source had CodeInterpreter: `agentcore add tool --harness <name> --type agentcore_code_interpreter --name <tool-name>`.
+3. **First deploy:** `agentcore deploy` — creates gateway, targets, harness, memory.
+4. **Attach the gateway tool:** `agentcore add tool --harness <name> --type agentcore_gateway --name <tool-name> --gateway <gateway-project-name> --outbound-auth awsIam`. `--gateway <project-name>` resolves the deployed ARN automatically.
+5. **Second deploy:** `agentcore deploy` — applies the gateway tool.
 
-   **Work in ONE project directory for the whole migration.** After `agentcore create <name>`, `cd` into that project dir and run **every** subsequent `add …`/`deploy`/`status` from there. Do **not** scaffold a second project, `cd` elsewhere, or create the project in multiple locations (e.g. both the working dir and `/tmp`). `add harness`/`add tool` resolve the project and its harness from the current directory — running them from a different dir yields "No agentcore project found" or "Harness '<name>' not found" against a project that doesn't have your harness. If a command fails, fix the command **in place**; do not relocate the project.
-2. **Add infrastructure** that doesn't depend on a deployed gateway:
-   - `agentcore add gateway`, then one **`lambda` code target** per migrated action group / KB shim (see "How shims are deployed" below).
-   - `agentcore add harness` — build the harness **with the CLI, in one command**; pass every field as a flag. Do **not** hand-write or patch `app/<name>/harness.json` (see "Never hand-author config" below). The flags:
-     - `--model-id` = source `foundationModel`; inference params via `--temperature`/`--top-p`/`--model-max-tokens` (set only one of temperature/top-p when the model rejects both — e.g. Claude Sonnet 4.5).
-     - `--system-prompt` = the folded agent instruction (+ non-DEFAULT override intent, per [`mapping.md`](mapping.md)).
-     - The source **guardrail canNOT be migrated** onto a bedrock harness — do **not** pass `--additional-params` (it is `lite_llm`-only and a bedrock harness rejects it, failing the whole `add harness`). Classify the guardrail **"cannot migrate / degraded"** and surface it to the user; do not fake it with a system-prompt mention. See [`mapping.md`](mapping.md), "Guardrail — cannot migrate".
-     - Do **not** pass any other `--additional-params` on a bedrock harness for the same reason.
-     - managed memory left on by default.
-   - self-contained harness tools: `agentcore add tool --harness <harness-name> --type agentcore_code_interpreter --name <tool-name>` (if the source had CodeInterpreter). Like all `add tool` calls, `--harness` and `--name` are **required**.
-3. **First deploy:** `agentcore deploy` — creates the gateway, targets, harness, and memory.
-4. **Attach the gateway tool** now that the gateway is deployed: `agentcore add tool --harness <harness-name> --type agentcore_gateway --name <tool-name> --gateway <gateway-project-name> --outbound-auth awsIam`. `agentcore add tool` **requires** `--name` (the tool name) — omitting it makes the command fail; that failure is **not** a signal that the CLI can't help, and it is **never** a reason to hand-edit `harness.json`. `--gateway <project-name>` resolves the deployed ARN from state automatically (use `--gateway-arn <arn>` only if you must pass an ARN explicitly). `add tool` attaches to an **already-existing** harness — that is exactly its job, so "harness already exists" is expected, not an error to route around.
-5. **Second deploy:** `agentcore deploy` — applies the harness's new gateway tool.
+`add tool` **requires** `--harness` and `--name`; attaching to an existing harness is its normal job. A command that fails on a missing flag is fixed by adding the flag — never by hand-editing config (see "Never hand-author config").
 
 ## How shims are deployed — the CLI owns packaging
 Each shim is a **`lambda` code target** on the gateway: the CLI builds and deploys the Lambda (and its IAM) from your source at `agentcore deploy`. **Never** zip, `aws lambda create-function`, or boto3-deploy it yourself.
@@ -44,7 +38,7 @@ Place the **rendered shim** (`assets/templates/{kb_shim,lambda_shim}.py.tmpl`, t
 (`--type lambda-function-arn` is a *different* target — it wires an already-existing Lambda by ARN. Use the `lambda` code target above for shims this skill generates.)
 
 ## Never hand-author config — drive the CLI
-Build and modify the harness and its tools **only** through `agentcore` commands (`add harness`, `add tool`, `add gateway`, `add gateway-target`). **Never** `cat >`, hand-write, or Python-patch `app/<name>/harness.json` or `agentcore/agentcore.json` — the schema shape shifts between releases, so hand-authored config drifts from what the CLI expects and fails validation (e.g. an `agentcore_gateway` tool needs a specific `agentCoreGateway` config block; guardrail `additionalParams` must go through `add harness --additional-params`). If an `agentcore add …` command fails, the fix is to **correct the command's flags** (a missing `--name`, a wrong `--type`), not to edit the JSON by hand. Hand-editing is how fidelity gets silently lost — a dropped guardrail, a malformed tool — which is exactly what this migration must not do.
+Build and modify the harness and its tools **only** through `agentcore` commands — never `cat >`, hand-write, or Python-patch `app/<name>/harness.json` or `agentcore/agentcore.json`. The schema shifts between releases, so hand-authored config drifts and fails validation. When a command fails, fix its flags; don't route around it by editing JSON.
 
 ## One action group = one target, with all its functions
 A Bedrock action group can expose several functions/operations (up to three), each with its own schema. The tool-schema file is a **`ToolDefinition[]` array**, so a single Lambda target carries every function in that action group — one array entry per function/operationId. Do not split an action group into multiple targets. [`tool_schema.json.tmpl`](../assets/templates/tool_schema.json.tmpl) is already an array; add one entry per function, mirroring the source schema exactly ([`mapping.md`](mapping.md)).

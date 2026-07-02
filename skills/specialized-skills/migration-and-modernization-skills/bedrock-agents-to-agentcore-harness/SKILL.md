@@ -60,7 +60,7 @@ The agent is eligible, but not every component migrates with full fidelity. Befo
 
 - **clean** — behavior preserved. Most components land here: action groups via shim, *any* KB (MANAGED via connector, others via KB shim — both reproduce retrieval), CodeInterpreter built-in, model + inference params, and managed memory (the standard harness memory, not a downgrade).
 - **degraded** — a genuine fidelity change the user should weigh, e.g. a non-DEFAULT orchestration/pre-processing prompt whose business logic can't be cleanly folded into the system prompt, or any behavior the migration can only approximate.
-- **cannot** — no harness equivalent, capability is lost: Return-of-Control action groups, and the **guardrail** (the harness has no guardrail field; `--additional-params` is `lite_llm`-only — see [`references/mapping.md`](references/mapping.md)). Both must be surfaced to the user.
+- **cannot** — no harness equivalent, capability lost: Return-of-Control action groups and the **guardrail** (see [`references/mapping.md`](references/mapping.md)). Surface both to the user.
 
 Use the mapping in [`references/mapping.md`](references/mapping.md) to classify. Present the ledger and **pause for explicit acknowledgement** — the user must accept the *degraded* and *cannot* items before planning. Nothing irreversible has happened yet; this is informed consent on fidelity loss.
 

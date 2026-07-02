@@ -43,18 +43,10 @@ Use the harness's **managed memory**, which is on by default — the harness aut
 Reference: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-memory.html
 
 ## Mapping model parameters to the harness model config
-Set the model params through `agentcore add harness` flags — never by hand-editing `harness.json` ([`deploy.md`](deploy.md), "Never hand-author config"): `--model-id`, `--model-max-tokens`, `--temperature`, `--top-p`, `--api-format`. Set **only one** of temperature/top-p when the model rejects both (e.g. Claude Sonnet 4.5 errors if both are given).
+Set model params via `agentcore add harness` flags (not by hand-editing config — see [`deploy.md`](deploy.md)): `--model-id`, `--model-max-tokens`, `--temperature`, `--top-p`, `--api-format`. Set **only one** of temperature/top-p when the model rejects both (e.g. Claude Sonnet 4.5).
 
-**Note on `--additional-params`:** this flag is **`lite_llm`-provider only** — a Bedrock-provider harness (`--model-provider bedrock`, which every Bedrock Agent migration uses) **rejects it** (`add harness` fails with exit 1). Do not pass `--additional-params` on a bedrock harness. This is why the guardrail cannot ride there — see below.
-
-## Guardrail — cannot migrate (degraded), surface to the user
-A source `guardrailConfiguration` **cannot** be carried onto an AgentCore harness with the current CLI. Verified against the CLI: the harness schema has **no guardrail field**, and the only pass-through (`--additional-params`) is **`lite_llm`-provider only** — a bedrock harness rejects it. There is no supported path to attach a Bedrock guardrail to a bedrock harness today.
-
-Therefore treat the guardrail like a **Return-of-Control action group** (see below): classify it **"cannot migrate / degraded"** in the migration assessment and **surface it to the user explicitly** — the migrated harness will **not** enforce the source guardrail. Do **not**:
-- pass `--additional-params` on a bedrock harness (it fails), and
-- do **not** substitute a system-prompt *mention* of the guardrail ("this agent is protected by guardrail X") — a prompt note enforces **nothing** and silently misrepresents a dropped safety control.
-
-If the user needs the guardrail enforced, they must apply it outside the harness (e.g. at the application/gateway layer or via a wrapper that calls Bedrock `ApplyGuardrail`), which is out of scope for this skill. Record the source `guardrailIdentifier` + version in the assessment so the user knows exactly what was not carried over.
+## Guardrail — cannot migrate; surface to the user
+A source guardrail cannot be attached to a bedrock harness with the current CLI: there is no guardrail field, and `--additional-params` (the only pass-through) is `lite_llm`-provider only, so a bedrock harness rejects it. Classify the guardrail **cannot** in the assessment and tell the user the migrated harness will **not** enforce it — recording the source `guardrailIdentifier` + version. Do **not** fake it with a system-prompt mention (that enforces nothing). Enforcing it means applying `ApplyGuardrail` outside the harness, which is out of scope.
 
 ## Mapping the prompt to the system prompt
 Fold the agent instruction into the harness `--system-prompt`. If `AMAZON.UserInput` was present, include the clarification instruction.

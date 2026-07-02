@@ -28,6 +28,6 @@ State the result of *every* condition to the user, not just the first failure �
 - **DRAFT-only agent** (no published version) — common; treat DRAFT as the source (see [`discovery.md`](discovery.md)).
 - **Mixed action-group schema styles** (`functionSchema` and OpenAPI in one agent).
 - **Managed KB with non-default retrieval config, code interpreter, session memory** — all have harness targets (see [`mapping.md`](mapping.md)).
-- **An agent with a guardrail** — still eligible to migrate overall; the guardrail itself just can't be carried (see next note).
+- **An agent with a guardrail** — eligible overall; the guardrail capability just can't be carried.
 
-(Two things are eligible for migration *overall* but whose *capability* can't be reproduced on the harness — classify each **cannot / degraded** in the assessment and surface to the user, see [`mapping.md`](mapping.md): **Return-of-Control action groups**, and the **guardrail** — the harness has no guardrail field and `--additional-params` is `lite_llm`-only.)
+(Eligible to migrate, but whose *capability* the harness can't reproduce — classify **cannot** and surface to the user: **Return-of-Control action groups** and the **guardrail**. See [`mapping.md`](mapping.md).)
